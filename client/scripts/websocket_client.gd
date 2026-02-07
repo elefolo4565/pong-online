@@ -8,7 +8,7 @@ var _socket: WebSocketPeer = WebSocketPeer.new()
 var _connected: bool = false
 
 # サーバーURL（ローカル開発時はws://、本番はwss://）
-var server_url: String = "ws://localhost:8080"
+var server_url: String = "wss://pong-online-4xcn.onrender.com"
 
 func connect_to_server() -> void:
 	var err = _socket.connect_to_url(server_url)
