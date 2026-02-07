@@ -1,7 +1,6 @@
 # Godot
 client/.godot/
 client/.import/
-client/export/
 
 # Node.js
 server/node_modules/
