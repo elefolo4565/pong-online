@@ -1,6 +1,8 @@
 const { WebSocketServer } = require('ws');
+const http = require('http');
 
 const PORT = process.env.PORT || 8080;
+const MAX_ROOMS = 10;
 
 // ゲーム定数
 const FIELD_W = 1280;
@@ -26,8 +28,20 @@ const POWERUP_RADIUS = 15;
 const POWERUP_DURATION = 5.0; // 秒
 
 // --- サーバー起動 ---
-const wss = new WebSocketServer({ port: PORT });
-console.log(`Pong Server started on port ${PORT}`);
+const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.method === 'GET' && req.url === '/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ rooms: rooms.size, max_rooms: MAX_ROOMS }));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+const wss = new WebSocketServer({ server });
+server.listen(PORT, () => {
+  console.log(`Pong Server started on port ${PORT}`);
+});
 
 // マッチングキュー
 let matchQueue = [];
@@ -91,6 +105,12 @@ function joinQueue(ws) {
   if (matchQueue.includes(ws)) return;
   // 既にルームにいる場合は無視
   if (ws.roomId !== null) return;
+
+  // ルーム上限チェック
+  if (rooms.size >= MAX_ROOMS) {
+    sendTo(ws, { type: 'queue_full' });
+    return;
+  }
 
   matchQueue.push(ws);
   console.log(`Player queued. Queue size: ${matchQueue.length}`);

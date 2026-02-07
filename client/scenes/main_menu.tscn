@@ -45,7 +45,20 @@ horizontal_alignment = 1
 layout_mode = 2
 custom_minimum_size = Vector2(300, 60)
 theme_override_font_sizes/font_size = 28
-text = "対戦する"
+text = "オンライン対戦"
+
+[node name="AIButton" type="Button" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(300, 60)
+theme_override_font_sizes/font_size = 28
+text = "AI対戦 (練習)"
+
+[node name="RoomStatusLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 1)
+text = "ルーム情報取得中..."
+horizontal_alignment = 1
 
 [node name="StatusLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2

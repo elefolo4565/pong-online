@@ -33,6 +33,12 @@ func _on_message(data: Dictionary) -> void:
 			# 少し待ってからゲーム画面へ
 			await get_tree().create_timer(0.5).timeout
 			get_tree().change_scene_to_file("res://scenes/game.tscn")
+		"queue_full":
+			status_label.text = "ルーム上限に達しています"
+			dots_label.text = ""
+			WebSocketClient.close()
+			await get_tree().create_timer(2.0).timeout
+			get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _on_cancel_pressed() -> void:
 	WebSocketClient.close()
