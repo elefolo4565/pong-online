@@ -13,8 +13,10 @@ const BALL_SPEED_INIT = 400;
 const BALL_SPEED_MAX = 800;
 const BALL_SPEED_INCREASE = 1.05;
 const WIN_SCORE = 5;
-const TICK_RATE = 60;
+const TICK_RATE = 60;          // 物理演算は60fps
+const SEND_RATE = 20;          // 送信は20fps
 const TICK_MS = 1000 / TICK_RATE;
+const SEND_INTERVAL = TICK_RATE / SEND_RATE; // 3tickに1回送信
 
 // パワーアップ定数
 const POWERUP_TYPES = ['paddle_grow', 'paddle_shrink', 'ball_speed', 'multi_ball'];
@@ -169,6 +171,7 @@ function createRoom(p1, p2) {
     // タイマー
     gameLoop: null,
     lastTick: 0,
+    tickCount: 0,
   };
 
   rooms.set(roomId, room);
@@ -272,31 +275,34 @@ function updateGame(room, dt) {
     }
   }
 
-  // ゲーム状態をブロードキャスト
-  const state = {
-    type: 'game_state',
-    ball: { x: room.ballX, y: room.ballY },
-    extra_balls: room.extraBalls.map(b => ({ x: b.x, y: b.y })),
-    paddles: {
-      p1_y: room.paddle1Y,
-      p2_y: room.paddle2Y,
-      p1_h: room.paddle1H,
-      p2_h: room.paddle2H,
-    },
-    score: { p1: room.scoreP1, p2: room.scoreP2 },
-    powerups: room.powerups.map(p => ({
-      id: p.id,
-      x: p.x,
-      y: p.y,
-      ptype: p.type,
-    })),
-    effects: room.effects.map(e => ({
-      type: e.type,
-      target_player: e.targetPlayer,
-      remaining: e.remaining,
-    })),
-  };
-  broadcastToRoom(room, state);
+  // 送信頻度を制限（20fps）
+  room.tickCount++;
+  if (room.tickCount % SEND_INTERVAL === 0) {
+    const state = {
+      type: 'game_state',
+      ball: { x: room.ballX, y: room.ballY, vx: room.ballVX, vy: room.ballVY },
+      extra_balls: room.extraBalls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy })),
+      paddles: {
+        p1_y: room.paddle1Y,
+        p2_y: room.paddle2Y,
+        p1_h: room.paddle1H,
+        p2_h: room.paddle2H,
+      },
+      score: { p1: room.scoreP1, p2: room.scoreP2 },
+      powerups: room.powerups.map(p => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        ptype: p.type,
+      })),
+      effects: room.effects.map(e => ({
+        type: e.type,
+        target_player: e.targetPlayer,
+        remaining: e.remaining,
+      })),
+    };
+    broadcastToRoom(room, state);
+  }
 }
 
 function updateBall(room, dt, ballType) {

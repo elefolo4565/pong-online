@@ -8,18 +8,27 @@ const PADDLE_H: float = 120.0
 const BALL_SIZE: float = 20.0
 const PADDLE_SPEED: float = 500.0
 const PADDLE_MARGIN: float = 40.0
+const LERP_SPEED: float = 20.0  # 補間速度
 
 # パワーアップ色
 const POWERUP_COLORS = {
-	"paddle_grow": Color(0.2, 1.0, 0.2),     # 緑
-	"paddle_shrink": Color(1.0, 0.2, 0.2),   # 赤
-	"ball_speed": Color(1.0, 1.0, 0.2),      # 黄
-	"multi_ball": Color(0.2, 0.6, 1.0),      # 青
+	"paddle_grow": Color(0.2, 1.0, 0.2),
+	"paddle_shrink": Color(1.0, 0.2, 0.2),
+	"ball_speed": Color(1.0, 1.0, 0.2),
+	"multi_ball": Color(0.2, 0.6, 1.0),
 }
 
-# ゲーム状態
+# サーバーからの目標値（補間先）
+var target_ball_pos: Vector2 = Vector2(FIELD_W / 2, FIELD_H / 2)
+var target_paddle1_y: float = FIELD_H / 2
+var target_paddle2_y: float = FIELD_H / 2
+
+# ボール速度（クライアント予測用）
+var ball_velocity: Vector2 = Vector2.ZERO
+
+# 表示用の現在値（補間で滑らかに更新）
 var ball_pos: Vector2 = Vector2(FIELD_W / 2, FIELD_H / 2)
-var extra_balls: Array = []  # マルチボール用
+var extra_balls: Array = []
 var paddle1_y: float = FIELD_H / 2
 var paddle2_y: float = FIELD_H / 2
 var paddle1_h: float = PADDLE_H
@@ -31,8 +40,8 @@ var countdown: int = 0
 var game_active: bool = false
 
 # パワーアップ
-var powerups: Array = []  # [{id, x, y, type}, ...]
-var active_effects: Array = []  # [{type, target_player, remaining}, ...]
+var powerups: Array = []
+var active_effects: Array = []
 
 # UI参照
 @onready var score_label: Label = $UILayer/ScoreLabel
@@ -49,6 +58,24 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if game_active:
 		_handle_input(delta)
+		# クライアント側でボールを予測移動
+		ball_pos += ball_velocity * delta
+		# 壁反射の予測
+		if ball_pos.y - BALL_SIZE / 2 <= 0:
+			ball_pos.y = BALL_SIZE / 2
+			ball_velocity.y = abs(ball_velocity.y)
+		if ball_pos.y + BALL_SIZE / 2 >= FIELD_H:
+			ball_pos.y = FIELD_H - BALL_SIZE / 2
+			ball_velocity.y = -abs(ball_velocity.y)
+
+	# サーバー目標値に向けて補間（ボール以外）
+	if GameState.player_number == 1:
+		paddle2_y = lerpf(paddle2_y, target_paddle2_y, delta * LERP_SPEED)
+		paddle1_y = my_paddle_y  # 自分のパドルは即座に反映
+	else:
+		paddle1_y = lerpf(paddle1_y, target_paddle1_y, delta * LERP_SPEED)
+		paddle2_y = my_paddle_y
+
 	queue_redraw()
 
 func _handle_input(delta: float) -> void:
@@ -60,7 +87,6 @@ func _handle_input(delta: float) -> void:
 
 	if direction != 0.0:
 		my_paddle_y += direction * PADDLE_SPEED * delta
-		# パドルの高さに応じてクランプ
 		var my_h = paddle1_h if GameState.player_number == 1 else paddle2_h
 		my_paddle_y = clampf(my_paddle_y, my_h / 2, FIELD_H - my_h / 2)
 		WebSocketClient.send_message({"type": "paddle_move", "y": my_paddle_y})
@@ -111,8 +137,17 @@ func _on_message(data: Dictionary) -> void:
 
 func _apply_game_state(data: Dictionary) -> void:
 	var ball = data.get("ball", {})
-	ball_pos.x = float(ball.get("x", ball_pos.x))
-	ball_pos.y = float(ball.get("y", ball_pos.y))
+	# サーバーからの正確な位置で補正
+	target_ball_pos.x = float(ball.get("x", target_ball_pos.x))
+	target_ball_pos.y = float(ball.get("y", target_ball_pos.y))
+	ball_velocity.x = float(ball.get("vx", 0))
+	ball_velocity.y = float(ball.get("vy", 0))
+	# ボール位置をサーバー値にスナップ（予測との差が大きい場合は即座に修正）
+	var diff = ball_pos.distance_to(target_ball_pos)
+	if diff > 50.0:
+		ball_pos = target_ball_pos
+	else:
+		ball_pos = ball_pos.lerp(target_ball_pos, 0.5)
 
 	# マルチボール
 	var eb = data.get("extra_balls", [])
@@ -121,8 +156,8 @@ func _apply_game_state(data: Dictionary) -> void:
 		extra_balls.append(Vector2(float(b.get("x", 0)), float(b.get("y", 0))))
 
 	var paddles = data.get("paddles", {})
-	paddle1_y = float(paddles.get("p1_y", paddle1_y))
-	paddle2_y = float(paddles.get("p2_y", paddle2_y))
+	target_paddle1_y = float(paddles.get("p1_y", target_paddle1_y))
+	target_paddle2_y = float(paddles.get("p2_y", target_paddle2_y))
 	paddle1_h = float(paddles.get("p1_h", PADDLE_H))
 	paddle2_h = float(paddles.get("p2_h", PADDLE_H))
 
@@ -139,12 +174,6 @@ func _apply_game_state(data: Dictionary) -> void:
 
 	var effects = data.get("effects", [])
 	active_effects = effects
-
-	# 自分のパドルは入力値を使うが、反映結果も参照
-	if GameState.player_number == 1:
-		my_paddle_y = paddle1_y
-	else:
-		my_paddle_y = paddle2_y
 
 func _update_score_display() -> void:
 	score_label.text = "%d  -  %d" % [score_p1, score_p2]
@@ -182,7 +211,6 @@ func _draw() -> void:
 		var color = POWERUP_COLORS.get(ptype, Color.WHITE)
 		var px = float(p.get("x", 0))
 		var py = float(p.get("y", 0))
-		# ダイヤモンド型で描画
 		var points = PackedVector2Array([
 			Vector2(px, py - 15),
 			Vector2(px + 15, py),
@@ -214,7 +242,6 @@ func _draw_effects() -> void:
 			"multi_ball":
 				label = "MULTI BALL"
 		if label != "":
-			# 効果バーを画面上部に表示
 			var bar_width = remaining / 5.0 * 100.0
 			draw_rect(Rect2(FIELD_W / 2 - 50, y_offset, bar_width, 8), color)
 			y_offset += 15.0
